@@ -5,7 +5,7 @@ name: Windows build
 on:
   workflow_dispatch:
   push:
-    branches: [sanvoice]
+    branches: [main]
 
 jobs:
   windows:
@@ -33,7 +33,7 @@ jobs:
 
       - uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.*'
+          version: '6.11.2'
           arch: win64_msvc2022_64
           modules: qtnetworkauth qtshadertools qt5compat
 
