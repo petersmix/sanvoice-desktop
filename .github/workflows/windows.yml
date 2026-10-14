@@ -1,0 +1,73 @@
+# Builds the SANVOICE desktop installer for Windows (64-bit), following
+# upstream .gitlab-ci-files/windows-desktop.yml: MSVC 2022 + Ninja, MSYS2 tools, Qt 6 MSVC, NSIS.
+name: Windows build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sanvoice]
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: MSYS2 tools on PATH
+        shell: pwsh
+        run: |
+          C:\msys64\usr\bin\pacman.exe -Sy --noconfirm --needed base-devel mingw-w64-x86_64-toolchain perl yasm nasm gawk bzip2 sed patch pkg-config gettext intltool
+          "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\msys64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "C:\msys64\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Python modules
+        run: python -m pip install pystache six
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.*'
+          arch: win64_msvc2022_64
+          modules: qtnetworkauth qtshadertools qt5compat
+
+      - name: NSIS
+        shell: pwsh
+        run: |
+          if (-not (Get-Command makensis -ErrorAction SilentlyContinue)) { choco install nsis -y --no-progress }
+          "C:\Program Files (x86)\NSIS" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S . -B build-desktop -G Ninja
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          -DCMAKE_C_COMPILER=cl.exe -DCMAKE_CXX_COMPILER=cl.exe -DCMAKE_RC_COMPILER=rc.exe
+          -DENABLE_WINDOWS_TOOLS_CHECK=ON
+          -DENABLE_APP_PACKAGING=ON
+          -DENABLE_UPDATE_CHECK=OFF
+
+      - name: Build and package
+        shell: pwsh
+        run: cmake --build build-desktop --target install --parallel 4
+
+      - name: Upload installer
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SANVOICE-Windows
+          path: |
+            build-desktop/OUTPUT/Packages/*.exe
+            build-desktop/OUTPUT/*.exe
+          if-no-files-found: warn
+          retention-days: 30
